@@ -41,6 +41,10 @@ GxEPD2_DISPLAY_CLASS<GxEPD2_DRIVER_CLASS, MAX_HEIGHT(GxEPD2_DRIVER_CLASS)> displ
 SPIClass hspi(HSPI);
 U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 
+// date and time
+char date[11];
+char current_time[6];
+
 // weather info
 char weather_call[128];
 char weather_info[32];
@@ -116,23 +120,12 @@ void loop()
   struct tm timeinfo;
   getLocalTime(&timeinfo);
   const char* datetime = asctime(&timeinfo);
+  //get date: Www Mmm dd
+  snprintf(date, 11, "%s", datetime);
+  //get time: hh:mm
+  snprintf(current_time, 6, "%s", datetime + 11);
   // current time
   time_t timestamp = mktime(&timeinfo);
-
-  //get date: Www Mmm dd + null
-  char date[11];
-  for(int i = 0; i < 10; i++) {
-    date[i] = datetime[i];
-  }
-  date[10] = '\0';
-
-  //get time: hh:mm + null
-  char time[6];
-  for(int i = 0; i < 5; i++) {
-    int j = i+11;
-    time[i] = datetime[j];
-  }
-  time[5] = '\0';
  
   // fetch weather data
   http.begin(weather_call);
@@ -293,10 +286,10 @@ void loop()
     //center time, text box bounds
     int16_t tbx, tby;
     uint16_t tbw, tbh;
-    display.getTextBounds(time, 0, 0, &tbx, &tby, &tbw, &tbh);
+    display.getTextBounds(current_time, 0, 0, &tbx, &tby, &tbw, &tbh);
     int16_t x_time = ((display.width() - tbw) / 2) - tbx;
     u8g2Fonts.setCursor(x_time, line_number * line_height);
-    u8g2Fonts.print(time);
+    u8g2Fonts.print(current_time);
 
     //temperature
     display.getTextBounds(weather_info, 0, 0, &tbx, &tby, &tbw, &tbh);
