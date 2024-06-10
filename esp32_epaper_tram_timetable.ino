@@ -9,11 +9,6 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include "Secrets.h"
 #include "ErrorBitmaps.h"
-//#include "bitmaps/Bitmaps400x300.h" // 4.2"  b/w
-//#include "Bitmaps.h"
-
-//https://github.com/ZinggJM/GxEPD2/blob/master/examples/GxEPD2_WS_ESP32_Driver/GxEPD2_WS_ESP32_Driver.ino
-//https://github.com/ZinggJM/GxEPD2/blob/master/examples/GxEPD2_U8G2_Fonts_Example/GxEPD2_U8G2_Fonts_Example.ino
 
 // mapping of Waveshare ESP32 Driver Board
 // BUSY -> 25, RST -> 26, DC -> 27, CS-> 15, CLK -> 13, DIN -> 14
@@ -111,8 +106,8 @@ void setup()
 void loop()
 {
   if (WiFi.status() != WL_CONNECTED) {
+    display_error(epd_bitmap_wifi_off_48, 48);
     Serial.println("Wifi not connected");
-    //display_error(epd_bitmap_wifi_off_48);
     return;
   }
 
@@ -135,6 +130,7 @@ void loop()
   bool weather_error = deserializeJson(weather_doc, weather_json) && weather_res != 200;
 
   if (weather_error) {
+    display_error(epd_bitmap_error_48, 48);
     Serial.println("Error in getting weather info");
     Serial.println(weather_res);
     return;
@@ -163,6 +159,7 @@ void loop()
   bool transport_error = deserializeJson(transport_doc, transport_json) && transport_res != 200;
 
   if (transport_error) {
+    display_error(epd_bitmap_error_48, 48);
     Serial.println("Error in getting transport info");
     Serial.println(transport_res);
     return;
@@ -323,31 +320,27 @@ void loop()
 
 void initWiFi()
 {
+  int waited_ms = 0;
   WiFi.mode(WIFI_STA);
   WiFi.begin(SECRETS_SSID, SECRETS_PWD);
-  if (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED && waited_ms < 2000) {
+    waited_ms += 500;
     delay(500);
-  } 
+  }
 }
 
-void display_error(const unsigned char* error_bitmap)
+void display_error(const unsigned char* error_bitmap, int size)
 {
-  uint16_t x = display.width() / 2 - 24;
-  uint16_t y = display.height() / 2 - 24;
-  const char msg[] = "network error...";
-  display.setFullWindow();
+  uint16_t x = display.width() / 2 - (size / 2);
+  uint16_t y = display.height() / 2 - (size / 2);
   display.firstPage();
 
   do {
-    display.setRotation(0);
-    display.setFont(&FreeMonoBold9pt7b);
-    display.setTextColor(GxEPD_BLACK);
     display.fillScreen(GxEPD_WHITE);
-    display.setCursor(x, y);
-    display.print(msg);
-    display.drawBitmap(x, y, error_bitmap, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
+    display.drawInvertedBitmap(x, y, error_bitmap, size, size, GxEPD_BLACK);
   }
   while (display.nextPage());
+  display.hibernate();
   delay(30000);
 }
 
@@ -426,44 +419,3 @@ void deepSleepTest()
   display.hibernate();
   //Serial.println("deepSleepTest done");
 }
-
-
-
-void drawBitmaps()
-{
-  display.setFullWindow();
-
-#ifdef _GxBitmaps400x300_H_
-  drawBitmaps400x300();
-#endif
-
-}
-
-#ifdef _GxBitmaps400x300_H_
-void drawBitmaps400x300()
-{
-#if !defined(__AVR)
-  const unsigned char* bitmaps[] =
-  {
-    Bitmap400x300_1, Bitmap400x300_2
-  };
-#else
-  const unsigned char* bitmaps[] = {}; // not enough code space
-#endif
-  if (display.epd2.panel == GxEPD2::GDEW042T2)
-  {
-    for (uint16_t i = 0; i < sizeof(bitmaps) / sizeof(char*); i++)
-    {
-      display.firstPage();
-      do
-      {
-        display.fillScreen(GxEPD_WHITE);
-        display.drawInvertedBitmap(0, 0, bitmaps[i], display.epd2.WIDTH, display.epd2.HEIGHT, GxEPD_BLACK);
-      }
-      while (display.nextPage());
-      delay(2000);
-    }
-  }
-}
-#endif
-
