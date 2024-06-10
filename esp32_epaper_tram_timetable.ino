@@ -8,6 +8,7 @@
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <U8g2_for_Adafruit_GFX.h>
 #include "Secrets.h"
+#include "ErrorBitmaps.h"
 //#include "bitmaps/Bitmaps400x300.h" // 4.2"  b/w
 //#include "Bitmaps.h"
 
@@ -28,14 +29,11 @@
 
 // uncomment next line to use HSPI for EPD (and VSPI for SD), e.g. with Waveshare ESP32 Driver Board
 #define USE_HSPI_FOR_EPD
-
 #define GxEPD2_DISPLAY_CLASS GxEPD2_BW
 #define GxEPD2_DRIVER_CLASS GxEPD2_420     // GDEW042T2   400x300, UC8176 (IL0398), (WFT042CZ15)
-
 #define GxEPD2_BW_IS_GxEPD2_BW true
 #define IS_GxEPD(c, x) (c##x)
 #define IS_GxEPD2_BW(x) IS_GxEPD(GxEPD2_BW_IS_, x)
-
 #define MAX_DISPLAY_BUFFER_SIZE 65536ul
 #define MAX_HEIGHT(EPD) (EPD::HEIGHT <= MAX_DISPLAY_BUFFER_SIZE / (EPD::WIDTH / 8) ? EPD::HEIGHT : MAX_DISPLAY_BUFFER_SIZE / (EPD::WIDTH / 8))
 
@@ -53,7 +51,8 @@ char weather_icon[4];*/
 const char* transport_call = "https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql";
 char transport_req[416];
 
-int max_timetable_offset_s = 14400; // 4h - display departures max s in the future
+const int max_timetable_offset_s = 14400; // 4h - display departures max s in the future
+const int max_buffer = 68;
 
 DynamicJsonDocument weather_doc(1024);
 DynamicJsonDocument query_doc(1024);
@@ -61,8 +60,8 @@ DynamicJsonDocument transport_doc(2048);
 
 struct Tram {
   char short_name[4];
-  char full_name[56];
-  char timetable[56];
+  char full_name[max_buffer];
+  char timetable[max_buffer];
 };
 
 HTTPClient http;
@@ -87,20 +86,31 @@ void setup()
   sprintf(weather_call, "https://api.openweathermap.org/data/2.5/weather?lat=%s&lon=%s&appid=%s&units=metric", SECRETS_LAT, SECRETS_LON, SECRETS_APP_ID);
   sprintf(
     transport_req,
-    "{stop1: stop(id: \"%s\"){name code routes {shortName longName}stoptimesWithoutPatterns(numberOfDepartures: 15) {scheduledDeparture realtimeDeparture serviceDay headsign trip {route {shortName}}}},stop2: stop(id: \"%s\") {name code routes {shortName longName}stoptimesWithoutPatterns(numberOfDepartures: 15) {scheduledDeparture realtimeDeparture serviceDay headsign trip {route {shortName}}}}}",
+    "{stop1: stop(id: \"%s\"){name code routes {shortName longName}stoptimesWithoutPatterns(numberOfDepartures: 30) {scheduledDeparture realtimeDeparture serviceDay headsign trip {route {shortName}}}},stop2: stop(id: \"%s\") {name code routes {shortName longName}stoptimesWithoutPatterns(numberOfDepartures: 30) {scheduledDeparture realtimeDeparture serviceDay headsign trip {route {shortName}}}}}",
     SECRETS_STOP1,
     SECRETS_STOP2
   );
 
-  // display.powerOff();
-  // deepSleepTest();
-  Serial.println("setup done");
+  // set up display
+  display.init(115200);
+  u8g2Fonts.begin(display); // connect u8g2 procedures to Adafruit GFX
+  // first update should be full refresh
+  display.setFullWindow();
+  display.setRotation(0);
+  u8g2Fonts.setFontMode(1);                   // use u8g2 transparent mode (this is default)
+  u8g2Fonts.setFontDirection(0);             // left to right (this is default)
+  u8g2Fonts.setForegroundColor(GxEPD_BLACK);  // apply Adafruit GFX color
+  u8g2Fonts.setBackgroundColor(GxEPD_WHITE);  // apply Adafruit GFX color
+  u8g2Fonts.setFont(u8g2_font_profont12_tf); // 8px height; select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall u8g2_font_luRS10_tf u8g2_font_unifont_tf
+
+  Serial.println("Setup done");
 }
 
 void loop()
 {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Wifi disconnected");
+    Serial.println("Wifi not connected");
+    //display_error(epd_bitmap_wifi_off_48);
     return;
   }
 
@@ -125,13 +135,12 @@ void loop()
     time[i] = datetime[j];
   }
   time[5] = '\0';
-
+ 
   // fetch weather data
   http.begin(weather_call);
   int weather_res = http.GET();
   String weather_json = http.getString();
   http.end();
-  //DeserializationError
   bool weather_error = deserializeJson(weather_doc, weather_json) && weather_res != 200;
 
   if (weather_error) {
@@ -142,9 +151,7 @@ void loop()
 
   // get float temps, round, prep to display
   JsonObject main = weather_doc["main"];
-  //float float_temp = main["temp"];
   int int_temp = round_temp(main["temp"]);
-  //float float_feels_like = main["feels_like"];
   int int_feels_like = round_temp(main["feels_like"]);
   sprintf(weather_info, "%d°C (%d°C)", int_temp, int_feels_like);
 
@@ -219,6 +226,7 @@ void loop()
       int existsAt = -1;
 
       for (int j = 0; j < tram_count; j++) {
+        Serial.println(short_name);
         if (strcmp(trams[j].short_name, short_name) == 0) {
           existsAt = j;
           break;
@@ -235,7 +243,7 @@ void loop()
           if(strcmp(name, short_name) == 0) {
             //get full route name (delete spaces between dashes from long name due to line length)
             const char* long_name = current_stop["routes"][k]["longName"];
-            char full_name[56];
+            char full_name[max_buffer];
             int char_count = 0;
             int l = 0;
             while(long_name[l] != '\0') {
@@ -245,7 +253,7 @@ void loop()
               l++;
             }
             full_name[char_count] = '\0';
-            sprintf(new_tram.full_name, "%s (%s)", short_name, full_name);
+            snprintf(new_tram.full_name, max_buffer, "%s (%s)", short_name, full_name);
             Serial.println(new_tram.full_name);
             break;
           }
@@ -255,31 +263,19 @@ void loop()
         sprintf(new_tram.timetable, "%02d:%02d ", timeinfo->tm_hour, timeinfo->tm_min);
         trams[tram_count] = new_tram;
         tram_count++;
+        Serial.println(tram_count);
 
       } else {
-        //add time to existing tram struct
-        sprintf(trams[existsAt].timetable + strlen(trams[existsAt].timetable), "%02d:%02d ", timeinfo->tm_hour, timeinfo->tm_min);
-        Serial.println(trams[existsAt].timetable);
+        if ((strlen(trams[existsAt].timetable) + 7) <= max_buffer) {
+          //add time to existing tram struct
+          sprintf(trams[existsAt].timetable + strlen(trams[existsAt].timetable), "%02d:%02d ", timeinfo->tm_hour, timeinfo->tm_min);
+        }
       }
     }
   }
 
-  Serial.println(tram_count);
-
   // sort trams from stop1->from soonest departing, stop2->from soonest departing to alphabetical
   qsort(trams, tram_count, sizeof(Tram), compare);
-
-  display.init(115200);
-  u8g2Fonts.begin(display); // connect u8g2 procedures to Adafruit GFX
-  // first update should be full refresh
-  display.setFullWindow();
-  display.setRotation(0);
-
-  u8g2Fonts.setFontMode(1);                   // use u8g2 transparent mode (this is default)
-  u8g2Fonts.setFontDirection(0);             // left to right (this is default)
-  u8g2Fonts.setForegroundColor(GxEPD_BLACK);  // apply Adafruit GFX color
-  u8g2Fonts.setBackgroundColor(GxEPD_WHITE);  // apply Adafruit GFX color
-  u8g2Fonts.setFont(u8g2_font_profont12_tf); // 8px height; select u8g2 font from here: https://github.com/olikraus/u8g2/wiki/fntlistall u8g2_font_luRS10_tf u8g2_font_unifont_tf
   
   display.firstPage();
 
@@ -319,12 +315,12 @@ void loop()
     u8g2Fonts.print(weather_info);
 
     line_number += 2;
-
+    
     /*
     //weather icon
     uint16_t x_icon = display.width() - 48 - margin - margin;
     u8g2Fonts.setCursor(x_icon, line_number * line_height);
-    display.drawBitmap(x_icon, 25, weather_icon, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
+    display.drawBitmap(x_icon, 25, epd_bitmap_error_48, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
 
     line_number++;
     */
@@ -355,10 +351,30 @@ void initWiFi()
 {
   WiFi.mode(WIFI_STA);
   WiFi.begin(SECRETS_SSID, SECRETS_PWD);
-  while (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED) {
     delay(500);
+  } 
+}
+
+void display_error(const unsigned char* error_bitmap)
+{
+  uint16_t x = display.width() / 2 - 24;
+  uint16_t y = display.height() / 2 - 24;
+  const char msg[] = "network error...";
+  display.setFullWindow();
+  display.firstPage();
+
+  do {
+    display.setRotation(0);
+    display.setFont(&FreeMonoBold9pt7b);
+    display.setTextColor(GxEPD_BLACK);
+    display.fillScreen(GxEPD_WHITE);
+    display.setCursor(x, y);
+    display.print(msg);
+    display.drawBitmap(x, y, epd_bitmap_battery_low_48, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
   }
-  Serial.println("Wifi connected");
+  while (display.nextPage());
+  delay(30000);
 }
 
 int round_temp(float temp)
@@ -432,6 +448,7 @@ void deepSleepTest()
     display.print(again);*/
   }
   while (display.nextPage());
+  delay(10000);
   display.hibernate();
   //Serial.println("deepSleepTest done");
 }
