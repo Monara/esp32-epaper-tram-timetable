@@ -44,8 +44,6 @@ U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
 // weather info
 char weather_call[128];
 char weather_info[32];
-/*const float strong_wind_speed = 10.0;
-char weather_icon[4];*/
 
 // tram timetables
 const char* transport_call = "https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql";
@@ -154,14 +152,6 @@ void loop()
   int int_temp = round_temp(main["temp"]);
   int int_feels_like = round_temp(main["feels_like"]);
   sprintf(weather_info, "%d°C (%d°C)", int_temp, int_feels_like);
-
-  // get weather icon code
-  /*JsonObject weather = weahter_doc["weather"][0];
-  // get wind speed: if wind is strong, use own wind icon instead of one suggested by OWM
-  JsonObject wind = weather_doc["wind"];
-  float wind_speed = wind["speed"];
-  const char* OMW_icon = weather["icon"]; 
-  sprintf(weather_icon, "%s", wind_speed > strong_wind_speed ? "00w" : OMW_icon);*/
 
   // get tram timetables
   // form query as json
@@ -315,15 +305,6 @@ void loop()
     u8g2Fonts.print(weather_info);
 
     line_number += 2;
-    
-    /*
-    //weather icon
-    uint16_t x_icon = display.width() - 48 - margin - margin;
-    u8g2Fonts.setCursor(x_icon, line_number * line_height);
-    display.drawBitmap(x_icon, 25, epd_bitmap_error_48, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
-
-    line_number++;
-    */
 
     //print all trams with departure times
     for (int i = 0; i < tram_count; i++) {
@@ -371,7 +352,7 @@ void display_error(const unsigned char* error_bitmap)
     display.fillScreen(GxEPD_WHITE);
     display.setCursor(x, y);
     display.print(msg);
-    display.drawBitmap(x, y, epd_bitmap_battery_low_48, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
+    display.drawBitmap(x, y, error_bitmap, 48, 48, GxEPD_WHITE, GxEPD_BLACK);
   }
   while (display.nextPage());
   delay(30000);
@@ -493,17 +474,3 @@ void drawBitmaps400x300()
 }
 #endif
 
-/*void drawWeatherIcon(char* code, int wind_speed, int16_t x, int16_t y)
-{
-  const unsigned char* weather_icon;
-  if (code == "00w") weather_icon = epd_bitmap_windy;
-  else if (code == "01d") weather_icon = epd_bitmap_sunny;
-  else if (code == "01n") weather_icon = epd_bitmap_clear_night;
-  else if (code == "02d") weather_icon = epd_bitmap_partly_cloudy_day;
-  else if (code == "02n") weather_icon = epd_bitmap_cloudy_night;
-  else if (code == "03d" || code == "03n" || code == "04d" || code == "04n" ) weather_icon = epd_bitmap_cloudy;
-  else if (code == "09d" || code == "09n" || code == "10d" || code == "10n" ) weather_icon = epd_bitmap_rainy;
-  else if (code == "11d" || code == "11n") weather_icon = epd_bitmap_thunderstorm;
-  else if (code == "13d" || code == "13n") weather_icon = epd_bitmap_snowy;
-  else if (code == "50d" || code == "50n") weather_icon = epd_bitmap_foggy;
-}*/
